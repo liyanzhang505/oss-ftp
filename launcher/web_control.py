@@ -56,7 +56,7 @@ class LocalServer(SocketServer.ThreadingTCPServer):
 module_menus = {}
 class Http_Handler(BaseHTTPServer.BaseHTTPRequestHandler):
     deploy_proc = None
-
+    _language = 'cn'
 
     def load_module_menus(self):
         global module_menus
@@ -68,8 +68,14 @@ class Http_Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             if module != "launcher" and config.get(["modules", module, "auto_start"], 0) != 1:
                 continue
 
+            self._language = config.get(["modules", module, "language"], 'cn')
+
             #version = values["current_version"]
-            menu_path = os.path.join(root_path, module, "web_ui", "menu.json")
+            _menu_file = "menu.json"
+            if self._language == "en":
+                _menu_file = "menu_en.json"
+
+            menu_path = os.path.join(root_path, module, "web_ui", _menu_file)
             if not os.path.isfile(menu_path):
                 continue
                 
@@ -192,7 +198,6 @@ class Http_Handler(BaseHTTPServer.BaseHTTPRequestHandler):
     def req_index_handler(self):
         req = urlparse.urlparse(self.path).query
         reqs = urlparse.parse_qs(req, keep_blank_values=True)
-
         try:
             target_module = reqs['module'][0]
             target_menu = reqs['menu'][0]
@@ -200,11 +205,13 @@ class Http_Handler(BaseHTTPServer.BaseHTTPRequestHandler):
             target_module = 'launcher'
             target_menu = 'config'
 
+        self.load_module_menus()
 
-        if len(module_menus) == 0:
-            self.load_module_menus()
+        _index_file = "index.html"
+        if self._language == "en":
+            _index_file = "index_en.html"
 
-        index_path = os.path.join(current_path, 'web_ui', "index.html")
+        index_path = os.path.join(current_path, 'web_ui', _index_file)
         with open(index_path, "r") as f:
             index_content = f.read()
 
@@ -222,7 +229,11 @@ class Http_Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                     active = ''
                 menu_content += '<li %s><a href="/?module=%s&menu=%s">%s</a></li>\n' % (active, module, sub_url, sub_title)
 
-        right_content_file = os.path.join(root_path, target_module, "web_ui", target_menu + ".html")
+        _html_file_suffix = ".html"
+        if self._language == "en":
+            _html_file_suffix = "_en.html"
+
+        right_content_file = os.path.join(root_path, target_module, "web_ui", target_menu + _html_file_suffix)
         if os.path.isfile(right_content_file):
             with open(right_content_file, "r") as f:
                 right_content = f.read()
@@ -246,24 +257,35 @@ class Http_Handler(BaseHTTPServer.BaseHTTPRequestHandler):
 
         if reqs['cmd'] == ['get_config']:
             config.load()
-            data = '{ "popup_webui": %d, "show_systray": %d, "auto_start": %d, "ossftp_address": "%s", "ossftp_port": %d, "ossftp_loglevel": "%s", "ossftp_bucketendpoints": "%s" }' %\
+            data = '{ "popup_webui": %d, "show_systray": %d, "auto_start": %d, "language": "%s", "ossftp_address": "%s", "ossftp_port": %d, "ossftp_loglevel": "%s", "ossftp_bucketendpoints": "%s", "passive_ports_start":%d, "passive_ports_end":%d}' %\
                    (config.get(["modules", "launcher", "popup_webui"], 1)
                     , config.get(["modules", "launcher", "show_systray"], 1)
                     , config.get(["modules", "launcher", "auto_start"], 0)
+                    , config.get(["modules", "launcher", "language"], "cn")
                     , config.get(["modules", "ossftp", "address"], '127.0.0.1')
                     , config.get(["modules", "ossftp", "port"], 2048)
                     , config.get(["modules", "ossftp", "log_level"], 'INFO')
-                    , config.get(["modules", "ossftp", "bucket_endpoints"], ''))
+                    , config.get(["modules", "ossftp", "bucket_endpoints"], '')
+                    , config.get(["modules", "ossftp", "passive_ports_start"], 51000)
+                    , config.get(["modules", "ossftp", "passive_ports_end"], 53000))
         elif reqs['cmd'] == ['set_config']:
             success = True
             popup_webui = config.get(["modules", "launcher", "popup_webui"], 1)
             auto_start = config.get(["modules", "launcher", "auto_start"], 0)
             show_systray = config.get(["modules", "launcher", "show_systray"], 1)
+            language = config.get(["modules", "launcher", "language"], "cn")
             ossftp_address = config.get(["modules", "ossftp", "address"], "127.0.0.1")
             ossftp_port = config.get(["modules", "ossftp", "port"], 2048)
             ossftp_loglevel = config.get(["modules", "ossftp", "log_level"], 'INFO')
             ossftp_bucketendpoints = config.get(["modules", "ossftp", "bucket_endpoints"], '')
+            passive_ports_start = config.get(["modules", "ossftp", "passive_ports_start"], 51000)
+            passive_ports_end = config.get(["modules", "ossftp", "passive_ports_end"], 53000)
             data = '{"res":"fail"}'
+            if success and 'language' in reqs :
+                language = reqs['language'][0]
+                if language != 'en' and language != 'cn':
+                    success = False
+                    data = '{"res":"fail, language:%s"}' % language 
             if success and 'popup_webui' in reqs :
                 popup_webui = int(reqs['popup_webui'][0])
                 if popup_webui != 0 and popup_webui != 1:
@@ -297,22 +319,40 @@ class Http_Handler(BaseHTTPServer.BaseHTTPRequestHandler):
                     data = '{"res":"fail, illegal ossftp log level: %s. Must be: DEBUG, INFO, WARNING, ERROR, CRITICAL"}' % ossftp_loglevel
             if success and 'ossftp_bucketendpoints' in reqs:
                 ossftp_bucketendpoints = reqs['ossftp_bucketendpoints'][0].strip()
+            if success and 'passive_ports_start' in reqs:
+                passive_ports_start = int(reqs['passive_ports_start'][0])
+                if passive_ports_end < 0:
+                    success = False
+                    data = '{"res":"fail, ilegal ossftp passive_ports_start: %d"}' % passive_ports_start
+            if success and 'passive_ports_end' in reqs:
+                passive_ports_end = int(reqs['passive_ports_end'][0])
+                if passive_ports_end < 0:
+                    success = False
+                    data = '{"res":"fail, ilegal ossftp passive_ports_end: %d"}' % passive_ports_end
                 
             if success:
                 config.set(["modules", "launcher", "popup_webui"], popup_webui)
                 config.set(["modules", "launcher", "show_systray"], show_systray)
                 config.set(["modules", "launcher", "auto_start"], auto_start)
+                config.set(["modules", "launcher", "language"], language)
                 config.set(["modules", "ossftp", "address"], ossftp_address)
                 config.set(["modules", "ossftp", "port"], ossftp_port)
                 config.set(["modules", "ossftp", "log_level"], ossftp_loglevel)
                 config.set(["modules", "ossftp", "bucket_endpoints"], ossftp_bucketendpoints)
+                config.set(["modules", "ossftp", "passive_ports_start"], passive_ports_start)
+                config.set(["modules", "ossftp", "passive_ports_end"], passive_ports_end)
                 config.save()
                 if auto_start:
                     autorun.enable()
                 else:
                     autorun.disable()
                 data = '{"res":"success"}'
-                launcher_log.info('Set config: %s', json.dumps(config.config, sort_keys=True, separators=(',',':'), indent=2))
+
+                import copy
+                tmp_config = copy.deepcopy(config.config.copy())
+                del tmp_config['modules']['accounts']
+                launcher_log.info('Set config: %s', json.dumps(tmp_config, sort_keys=True, separators=(',', ':'), indent=2))
+                print(config.config)
             else:
                 launcher_log.error(data)
 

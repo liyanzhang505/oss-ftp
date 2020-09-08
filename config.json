@@ -1,8 +1,19 @@
 {
   "modules":{
+    "accounts":[
+      {
+        "login_username":"",
+        "login_password":"",
+        "access_id":"",
+        "access_secret":"",
+        "bucket_name":"",
+        "home_dir":""
+      }
+    ],
     "launcher":{
       "auto_start":0,
       "control_port":8192,
+      "language":"cn",
       "popup_webui":1,
       "show_systray":1
     },
@@ -10,6 +21,8 @@
       "address":"127.0.0.1",
       "bucket_endpoints":"",
       "log_level":"INFO",
+      "passive_ports_start":51000,
+      "passive_ports_end":53000,
       "port":2048
     }
   }

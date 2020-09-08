@@ -16,6 +16,9 @@ class OssFS(AbstractedFS):
         assert isinstance(root, unicode), root
         AbstractedFS.__init__(self, root, cmd_channel)
         bucket_name = root.strip('/')
+        if bucket_name.find('/') > -1:
+            index = bucket_name.find('/')
+            bucket_name = bucket_name[:index]
         bucket_info = cmd_channel.authorizer.get_bucket_info(bucket_name)
         access_key_id, access_key_secret= bucket_info.access_key.items()[0]
         endpoint = bucket_info.endpoint
@@ -47,6 +50,10 @@ class OssFS(AbstractedFS):
         assert isinstance(path, unicode), path
         self.oss_fs_impl.mkdir(path)
         
+    def infopath(self, path):
+        assert isinstance(path, unicode), path
+        self.oss_fs_impl.infopath(path)
+    
     def listdir(self, path):
         assert isinstance(path, unicode), path
         return self.oss_fs_impl.listdir(path)
@@ -144,7 +151,7 @@ class OssFS(AbstractedFS):
                                                        size, mtimestr, basename.rstrip('/'))
             yield line.encode('utf8', self.cmd_channel.unicode_errors)
     
-    def format_mlsx(self, basedir, listing, perms, facts, ingore_err=True):
+    def format_mlsx(self, basedir, listing, perms, facts, ignore_err=True):
         assert isinstance(basedir, unicode), basedir
         if listing:
             assert isinstance(listing[0][0], unicode)
